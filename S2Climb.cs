@@ -12,6 +12,10 @@ public class S2Climb : MonoBehaviour
     const string playerPath = basePath+"playerdata/";
     const string mapPath = basePath+"mapdata/";
 
+    const string finishMarker = "SM_Prop_Sign_Stop_01";
+    const float finishRange = 1.5f;
+    const float minFinishTime = 1.0f;
+
     const Packets hotkey_packet = Packets.Custom+1;
 
     const float saveload_speed = 0.5f;
@@ -70,6 +74,7 @@ public class S2Climb : MonoBehaviour
         public Vector2 save_pos;
         public bool save_active;
         public float start_time;
+        public float finish_time;
 
         public PlayerData() {
             Clear();
@@ -86,6 +91,7 @@ public class S2Climb : MonoBehaviour
             save_pos = new Vector2();
             save_active = false;
             start_time = RealTime.timeSinceLevelLoad;
+            finish_time = -1f;
         }
 
         public void SaveData() {
@@ -237,10 +243,49 @@ public class S2Climb : MonoBehaviour
 
     Respawning respawning;
     StandardRespawning standardRespawning;
+    Match match;
+
+    Vector2? finishPoint = null;
     MapScores mdata = new MapScores();
     Dictionary<int,PlayerData> pdata = new Dictionary<int,PlayerData>();
     Dictionary<string,string> pnames = new Dictionary<string,string>();
     CommandCore.CommandSystem cs;
+
+    void FindFinishPoint()
+    {
+        int count = 0;
+        foreach( PropModel pm in GameObject.FindObjectsOfType<PropModel>() ) {
+            if( pm.mapData.model == finishMarker ) {
+                finishPoint = pm.transform.position;
+                count++;
+            }
+        }
+
+        if( count==0 ) {
+            finishPoint = null;
+            GameChat.ChatOrLog("S2Climb: ERROR finish marker not found - timing and scores not available!");
+        } else if( count>1 ) {
+            GameChat.ChatOrLog("S2Climb: WARNING multiple finish markers present, using position of the last marker!");
+        }
+    }
+
+    void EndRun(int pid)
+    {
+        float time = RealTime.timeSinceLevelLoad - pdata[pid].start_time;
+        if( time < minFinishTime ) return;
+
+        Player p = Players.Get.GetPlayerByID((ushort)pid);
+        pdata[pid].finish_time = RealTime.timeSinceLevelLoad;
+        mdata.Add( new ClimbScore( (string)p.props["account"], time ) );
+
+        GameChat.ChatOrLog( String.Format(
+            "{0} finished with a time of {1:00}:{2:00}:{3:000}!",
+            p.nick,
+            Mathf.FloorToInt(time / 60f),
+            Mathf.FloorToInt(time % 60f),
+            (time-Mathf.Floor(time)) * 1000f
+        ));
+    }
 
     string TopScores(int pid, IEnumerable<string> args)
     {
@@ -344,6 +389,7 @@ public class S2Climb : MonoBehaviour
         respawning = GetComponent<Respawning>();
         standardRespawning = GetComponent<StandardRespawning>();
         standardRespawning.allowRespawning = false;
+        match = GetComponent<Match>();
 
         cs = new CommandCore.CommandSystem("!", new List<CommandCore.Command>{
             new CommandCore.Command("top", "top [nscores] [map]", TopScores),
@@ -368,8 +414,11 @@ public class S2Climb : MonoBehaviour
         foreach( Player p in Players.Get.GetHumans() ) {
             if( p ) {
                 pdata[p.id].start_time = RealTime.timeSinceLevelLoad;
+                pdata[p.id].finish_time = -1.0f;
             }
         }
+
+        FindFinishPoint();
     }
 
     void OnMatchEnded(IGameEvent e)
@@ -407,6 +456,7 @@ public class S2Climb : MonoBehaviour
     {
         Player p = e.Sender.GetComponent<Controls>().player;
         pdata[p.id].save_active = false;
+        pdata[p.id].finish_time = -1.0f;
         if( respawning.IsPlayerInQueue(p.id) ) {
             Respawning.RespawnObject ro = respawning.GetPlayerQueue(p.id);
             pdata[p.id].start_time = RealTime.timeSinceLevelLoad+ro.waitSecs;
@@ -460,6 +510,7 @@ public class S2Climb : MonoBehaviour
                 RespawningCommon.SpawnPlayer(p, 0f);
                 pdata[senderID].save_active = false;
                 pdata[senderID].start_time = RealTime.timeSinceLevelLoad;
+                pdata[senderID].finish_time = -1.0f;
             }
         }
     }
@@ -467,12 +518,18 @@ public class S2Climb : MonoBehaviour
     void OnGUI()
     {
         Controls local = Players.Get.GetLocalPlayerControlled();
-        if(local) {
+        if( local && finishPoint != null ) {
+            int pid = local.GetPlayerId();
+
             GUI.skin.label.fontSize = 48;
             GUI.skin.label.normal.textColor = new Color(1f, 1f, 1f, 0.7f);
 
-            // Calculate the time elapsed since the level started
-            float elapsed = RealTime.timeSinceLevelLoad - pdata[local.GetPlayerId()].start_time;
+            // Show run time
+            float elapsed;
+            if( pdata[pid].finish_time<0 )
+                elapsed = RealTime.timeSinceLevelLoad - pdata[pid].start_time;
+            else
+                elapsed = pdata[pid].finish_time - pdata[pid].start_time;
 
             // Format the time as minutes:seconds:milliseconds
             int minutes = Mathf.FloorToInt(elapsed / 60f);
@@ -497,5 +554,13 @@ public class S2Climb : MonoBehaviour
                 }
             }
         }
+
+        if( match.state == MatchState.InProgress )
+            foreach( Player player in Players.Get.GetAliveHumans() )
+                if( finishPoint != null &&
+                    pdata[player.id].finish_time<0 &&
+                    ((Vector2)player.controlled.transform.position - finishPoint.Value).magnitude < finishRange ) {
+                        EndRun(player.id);
+                    }
     }
 }
