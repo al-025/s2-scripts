@@ -468,7 +468,20 @@ public class S2Climb : MonoBehaviour
     {
         Controls local = Players.Get.GetLocalPlayerControlled();
         if(local) {
-            GUI.Label(new Rect(Screen.width-100,10,100,50),"Run time:\n"+(RealTime.timeSinceLevelLoad-pdata[local.GetPlayerId()].start_time).ToString("N1"));
+            GUI.skin.label.fontSize = 48;
+            GUI.skin.label.normal.textColor = new Color(1f, 1f, 1f, 0.7f);
+
+            // Calculate the time elapsed since the level started
+            float elapsed = RealTime.timeSinceLevelLoad - pdata[local.GetPlayerId()].start_time;
+
+            // Format the time as minutes:seconds:milliseconds
+            int minutes = Mathf.FloorToInt(elapsed / 60f);
+            int seconds = Mathf.FloorToInt(elapsed % 60f);
+            int milliseconds = Mathf.FloorToInt((elapsed - Mathf.Floor(elapsed)) * 1000f);
+            string timeText = string.Format("{0:00}:{1:00}:{2:000}", minutes, seconds, milliseconds);
+
+            // Display the formatted time
+            GUI.Label(new Rect((Screen.width - 200) / 2, Screen.height - Screen.height / 4, 300, 130), "\n" + timeText);
         }
     }
 
