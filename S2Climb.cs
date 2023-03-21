@@ -28,28 +28,28 @@ public class S2Climb : MonoBehaviour
 
     public class PlayerData {
         public class Hotkey {
-            public string key;
+            public KeyCode key;
             public List<string> mods;
 
             public Hotkey() {
-                key = "";
+                key = KeyCode.None;
                 mods = new List<string>();
             }
 
             public Hotkey(string k, params string[] mlist) {
-                key = k;
+                key = (KeyCode)Enum.Parse(typeof(KeyCode),k,true);
                 mods = new List<string>(mlist);
             }
 
             public Dictionary<string,object> to_dict() {
                 return new Dictionary<string,object>() {
-                    {"key",key},
+                    {"key",key.ToString()},
                     {"mods",mods}
                 };
             }
 
             public void from_dict(Dictionary<string,object> dict) {
-                key = (string)dict["key"];
+                key = (KeyCode)Enum.Parse(typeof(KeyCode),(string)dict["key"]);
                 mods.Clear();
                 foreach( object o in (List<object>)dict["mods"] ) {
                     mods.Add( (string)o );
@@ -327,9 +327,10 @@ public class S2Climb : MonoBehaviour
             if( modifiers.Contains(args.ElementAt(i).ToLower()) )
                 hk.mods.Add(args.ElementAt(i).ToLower());
         }
-        if( !Enum.TryParse(args.ElementAt(nargs-1),true,out kc) )
+        string k = args.ElementAt(nargs-1).ToString();
+        if( !Enum.TryParse(k,true,out kc) )
             return "Invalid key";
-        hk.key = args.ElementAt(nargs-1).ToString();
+        hk.key = kc;
         return "";
     }
 
@@ -551,6 +552,7 @@ public class S2Climb : MonoBehaviour
                     foreach( var entry in pd.commands )
                         if( entry.Value.is_pressed() )
                             SendHotkeyEvent(entry.Key);
+                            //TODO: don't trigger if chat is open
                 }
             }
         }
