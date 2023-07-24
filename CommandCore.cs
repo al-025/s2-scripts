@@ -46,6 +46,11 @@ namespace CommandCore
             var subs = msg.Substring(prefix.Length).Split(' ');
             Command cmd;
             string error = "";
+            if( subs[0] == "help" ) {
+                foreach( KeyValuePair<string,Command> c in commands )
+                    error += prefix + c.Value.helptext + "\n";
+                return error;
+            }
             if( commands.TryGetValue(subs[0], out cmd) ) {
                 error = cmd.action(pid, subs.Skip(1));
                 if( error != "" )

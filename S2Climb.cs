@@ -287,6 +287,18 @@ public class S2Climb : MonoBehaviour
         ));
     }
 
+    void Respawn(Player p) {
+        pdata[p.id].save_active = false;
+        pdata[p.id].finish_time = -1.0f;
+        if( respawning.IsPlayerInQueue(p.id) ) {
+            Respawning.RespawnObject ro = respawning.GetPlayerQueue(p.id);
+            pdata[p.id].start_time = RealTime.timeSinceLevelLoad+ro.waitSecs;
+        } else {
+            RespawningCommon.SpawnPlayer(p, 0f);
+            pdata[p.id].start_time = RealTime.timeSinceLevelLoad;
+        }
+    }
+
     string TopScores(int pid, IEnumerable<string> args)
     {
         int nargs = args.Count();
@@ -356,6 +368,13 @@ public class S2Climb : MonoBehaviour
         Pump.temp.Clear();
         Pump.temp.WriteStringASCII(eventname);
         GameClient.Get.Send(hotkey_packet, Pump.temp.Pack(), SendFlags.Reliable);
+    }
+
+
+    void Master_RespawnImmediatelyAtPosition(Player p, Vector2 position)
+    {
+        System.Func<string, Player, int, Vector2> respawnLocation = (prefab, player, team) => position;
+        respawning.DoRespawn("Gostek", p.GetTeam(), p.id, 0.0f, respawnLocation);
     }
 
     private void Awake()
@@ -455,16 +474,7 @@ public class S2Climb : MonoBehaviour
 
     void OnDied(IGameEvent e)
     {
-        Player p = e.Sender.GetComponent<Controls>().player;
-        pdata[p.id].save_active = false;
-        pdata[p.id].finish_time = -1.0f;
-        if( respawning.IsPlayerInQueue(p.id) ) {
-            Respawning.RespawnObject ro = respawning.GetPlayerQueue(p.id);
-            pdata[p.id].start_time = RealTime.timeSinceLevelLoad+ro.waitSecs;
-        } else {
-            RespawningCommon.SpawnPlayer(p, 0f);
-            pdata[p.id].start_time = RealTime.timeSinceLevelLoad;
-        }
+        Respawn(e.Sender.GetComponent<Controls>().player);
     }
 
     void OnPlayerChat(Player p, string msg)
@@ -473,7 +483,8 @@ public class S2Climb : MonoBehaviour
         string er = cs.Parse(p.id,msg);
         if( er == "" ) return;
         Debug.Log(er);
-        GameChat.instance.ServerChat(er,p.id);
+        foreach( string line in er.Split('\n') )
+            GameChat.instance.ServerChat(line,p.id);
     }
 
     void OnMessageFromClient(Packets eventCode, byte[] data, ushort senderID)
@@ -499,7 +510,7 @@ public class S2Climb : MonoBehaviour
             if( msg == "load" ) {
                 if( pdata[senderID].save_active ) {
                     if( p.controlled.GetComponent<GostekMovement>().v.velMag < saveload_speed )
-                        p.controlled.transform.position = pdata[senderID].save_pos;
+                        Master_RespawnImmediatelyAtPosition(p, pdata[senderID].save_pos);
                     else
                         GameChat.instance.ServerChat("Moving too fast to load!",senderID);
                 } else {
@@ -508,10 +519,8 @@ public class S2Climb : MonoBehaviour
             }
 
             if( msg == "reset" ) {
-                RespawningCommon.SpawnPlayer(p, 0f);
-                pdata[senderID].save_active = false;
-                pdata[senderID].start_time = RealTime.timeSinceLevelLoad;
                 pdata[senderID].finish_time = -1.0f;
+                Respawn(p);
             }
         }
     }
